@@ -463,18 +463,19 @@ st.caption(
 
 
 # --------------------------------------------------
-# 학교별 학생 수 비교
+# 학교 2개 선택 및 회귀 그래프 비교
 # --------------------------------------------------
 
 st.divider()
 
-st.header("2. 학교별 2010년과 2026년 학생 수 비교")
+st.header("2. 두 학교의 연도별 학생 수 회귀 그래프 비교")
 
 st.write(
-    "학교를 선택하면 두 연도의 학생 수와 증감 인원을 확인할 수 있습니다."
+    "두 학교를 선택하여 2010년과 2026년의 학생 수 변화와 "
+    "회귀 직선을 비교할 수 있습니다."
 )
 
-# 두 연도 모두 존재하는 학교만 비교 대상으로 설정
+# 두 연도에 모두 존재하는 학교만 선택 가능
 school_year_counts = (
     df.groupby("학교식별")["연도"]
     .nunique()
@@ -484,35 +485,28 @@ available_schools = school_year_counts[
     school_year_counts == 2
 ].index.tolist()
 
-if not available_schools:
+if len(available_schools) < 2:
 
-    st.warning(
-        "두 연도에 모두 존재하는 학교를 찾지 못했습니다. "
-        "학교명이나 지역명이 변경되었는지 확인해 주세요."
-    )
+    st.warning("비교할 수 있는 학교가 2개 미만입니다.")
 
 else:
 
-    school_labels = {
-        school: school
-        for school in sorted(available_schools)
-    }
-
     selected_schools = st.multiselect(
-        "비교할 학교 선택",
-        options=available_schools,
-        format_func=lambda x: school_labels[x],
-        placeholder="학교를 검색하거나 선택하세요."
+        "비교할 학교 2개 선택",
+        options=sorted(available_schools),
+        max_selections=2,
+        placeholder="학교를 검색하고 선택하세요."
     )
 
-    if selected_schools:
+    if len(selected_schools) == 2:
 
-        school_df = df[
+        # 선택한 두 학교 데이터
+        selected_df = df[
             df["학교식별"].isin(selected_schools)
         ].copy()
 
         # 학교별, 연도별 학생 수
-        pivot = school_df.pivot_table(
+        pivot = selected_df.pivot_table(
             index="학교식별",
             columns="연도",
             values="학생수(계)",
@@ -525,94 +519,178 @@ else:
             subset=[2010, 2026]
         )
 
-        pivot["학생 수 증감"] = (
-            pivot[2026] - pivot[2010]
-        )
+        if len(pivot) != 2:
 
-        pivot["증감률(%)"] = np.where(
-            pivot[2010] != 0,
-            pivot["학생 수 증감"] / pivot[2010] * 100,
-            np.nan
-        )
-
-        result = pivot.reset_index()
-
-        result = result.rename(columns={
-            "학교식별": "학교",
-            2010: "2010년 학생 수",
-            2026: "2026년 학생 수"
-        })
-
-        st.dataframe(
-            result.style.format({
-                "2010년 학생 수": "{:,.0f}명",
-                "2026년 학생 수": "{:,.0f}명",
-                "학생 수 증감": "{:+,.0f}명",
-                "증감률(%)": "{:+.2f}%"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-
-        # 전체 선택 학교 증감
-        total_2010 = pivot[2010].sum()
-        total_2026 = pivot[2026].sum()
-        total_change = total_2026 - total_2010
-
-        a, b, c = st.columns(3)
-
-        a.metric(
-            "2010년 학생 수 합계",
-            f"{total_2010:,.0f}명"
-        )
-
-        b.metric(
-            "2026년 학생 수 합계",
-            f"{total_2026:,.0f}명"
-        )
-
-        c.metric(
-            "학생 수 증감",
-            f"{total_change:+,.0f}명"
-        )
-
-        # 선택 학교 비교 그래프
-        compare_fig = go.Figure()
-
-        compare_fig.add_trace(
-            go.Bar(
-                x=result["학교"],
-                y=result["2010년 학생 수"],
-                name="2010년"
+            st.warning(
+                "두 학교의 연도별 학생 수를 모두 확인할 수 없습니다."
             )
-        )
 
-        compare_fig.add_trace(
-            go.Bar(
-                x=result["학교"],
-                y=result["2026년 학생 수"],
-                name="2026년"
+        else:
+
+            # 그래프
+            fig = go.Figure()
+
+            colors = [
+                "#2878B5",
+                "#E87532"
+            ]
+
+            regression_results = []
+
+            for i, school in enumerate(selected_schools):
+
+                y = np.array([
+                    pivot.loc[school, 2010],
+                    pivot.loc[school, 2026]
+                ], dtype=float)
+
+                x = np.array([2010, 2026], dtype=float)
+
+                # 회귀 직선 계산
+                slope, intercept = np.polyfit(x, y, 1)
+
+                predicted = slope * x + intercept
+
+                # 산점도
+                fig.add_trace(
+                    go.Scatter(
+                        x=x,
+                        y=y,
+                        mode="markers",
+                        name=f"{school} 관측값",
+                        marker=dict(
+                            color=colors[i],
+                            size=13,
+                            symbol="circle"
+                        ),
+                        hovertemplate=(
+                            "학교: " + school + "<br>"
+                            "연도: %{x}년<br>"
+                            "학생 수: %{y:,.0f}명"
+                            "<extra></extra>"
+                        )
+                    )
+                )
+
+                # 회귀 직선
+                fig.add_trace(
+                    go.Scatter(
+                        x=x,
+                        y=predicted,
+                        mode="lines",
+                        name=f"{school} 회귀 직선",
+                        line=dict(
+                            color=colors[i],
+                            width=4
+                        ),
+                        hovertemplate=(
+                            "학교: " + school + "<br>"
+                            "연도: %{x}년<br>"
+                            "예측 학생 수: %{y:,.1f}명"
+                            "<extra></extra>"
+                        )
+                    )
+                )
+
+                # 증감 결과
+                change = y[1] - y[0]
+
+                change_rate = (
+                    change / y[0] * 100
+                    if y[0] != 0 else np.nan
+                )
+
+                regression_results.append({
+                    "학교": school,
+                    "2010년 학생 수": y[0],
+                    "2026년 학생 수": y[1],
+                    "학생 수 증감": change,
+                    "증감률(%)": change_rate,
+                    "회귀 직선 기울기": slope
+                })
+
+            # 그래프 설정
+            fig.update_layout(
+                title="두 학교의 연도별 학생 수 및 회귀 직선 비교",
+                xaxis_title="연도",
+                yaxis_title="학생 수(명)",
+                xaxis=dict(
+                    tickmode="array",
+                    tickvals=[2010, 2026],
+                    ticktext=["2010년", "2026년"]
+                ),
+                hovermode="closest",
+                template="plotly_white",
+                height=600,
+                legend_title="학교 및 회귀 직선"
             )
-        )
 
-        compare_fig.update_layout(
-            title="선택한 학교의 연도별 학생 수 비교",
-            xaxis_title="학교",
-            yaxis_title="학생 수(명)",
-            barmode="group",
-            template="plotly_white",
-            height=550
-        )
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
 
-        st.plotly_chart(
-            compare_fig,
-            use_container_width=True
-        )
+            # 결과 표
+            st.subheader("학교별 회귀 분석 결과")
+
+            result_df = pd.DataFrame(
+                regression_results
+            )
+
+            st.dataframe(
+                result_df.style.format({
+                    "2010년 학생 수": "{:,.0f}명",
+                    "2026년 학생 수": "{:,.0f}명",
+                    "학생 수 증감": "{:+,.0f}명",
+                    "증감률(%)": "{:+.2f}%",
+                    "회귀 직선 기울기": "{:+,.2f}명/년"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # 학교별 지표
+            st.subheader("두 학교의 학생 수 변화 비교")
+
+            col1, col2 = st.columns(2)
+
+            for col, result in zip(
+                [col1, col2],
+                regression_results
+            ):
+
+                with col:
+
+                    st.markdown(
+                        f"### {result['학교']}"
+                    )
+
+                    st.metric(
+                        "2010년 학생 수",
+                        f"{result['2010년 학생 수']:,.0f}명"
+                    )
+
+                    st.metric(
+                        "2026년 학생 수",
+                        f"{result['2026년 학생 수']:,.0f}명"
+                    )
+
+                    st.metric(
+                        "16년간 학생 수 증감",
+                        f"{result['학생 수 증감']:+,.0f}명"
+                    )
+
+                    st.metric(
+                        "연평균 변화량",
+                        f"{result['회귀 직선 기울기']:+,.2f}명"
+                    )
 
     else:
+
         st.info(
-            "위에서 비교할 학교를 선택해 주세요."
+            "비교할 학교를 정확히 2개 선택해 주세요."
         )
+
 
 
 # --------------------------------------------------
