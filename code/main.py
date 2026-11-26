@@ -257,6 +257,68 @@ except Exception as e:
 
 st.success("2010년과 2026년 데이터 불러오기가 완료되었습니다.")
 
+# --------------------------------------------------
+# 데이터 개요
+# --------------------------------------------------
+
+st.divider()
+
+st.header("📊 데이터 개요")
+
+st.write(
+    "2010년과 2026년 원본 데이터의 행 수, 열 수, "
+    "자료형 및 빈 값 현황을 확인합니다."
+)
+
+for year in [2010, 2026]:
+
+    overview_df = raw_data[year].copy()
+
+    st.subheader(f"{year}년 데이터")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "행 수",
+        f"{overview_df.shape[0]:,}개"
+    )
+
+    col2.metric(
+        "열 수",
+        f"{overview_df.shape[1]:,}개"
+    )
+
+    col3.metric(
+        "전체 빈 값",
+        f"{overview_df.isna().sum().sum():,}개"
+    )
+
+    # 열별 자료형 및 빈 값 분석
+    info_df = pd.DataFrame({
+        "열 이름": overview_df.columns,
+        "자료형": [
+            str(overview_df[col].dtype)
+            for col in overview_df.columns
+        ],
+        "빈 값 개수": [
+            overview_df[col].isna().sum()
+            for col in overview_df.columns
+        ],
+        "빈 값 비율(%)": [
+            overview_df[col].isna().mean() * 100
+            for col in overview_df.columns
+        ]
+    })
+
+    st.dataframe(
+        info_df.style.format({
+            "빈 값 개수": "{:,.0f}",
+            "빈 값 비율(%)": "{:.2f}%"
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
 with st.expander("데이터 기본 정보 확인"):
 
     for year in [2010, 2026]:
