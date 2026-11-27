@@ -822,6 +822,213 @@ st.plotly_chart(
 )
 
 
+
+# --------------------------------------------------
+# 시도별 전체 재학생 수 비교
+# --------------------------------------------------
+
+st.divider()
+
+st.header("4. 시도별 전체 재학생 수 비교")
+
+st.write(
+    "각 시도에 속한 학교들의 재학생 수를 모두 합산하여 "
+    "2010년과 2026년의 변화를 비교합니다."
+)
+
+# 시도별 학생 수 합계
+province_summary = (
+    df.groupby(["시도교육청", "연도"])["학생수(계)"]
+    .sum()
+    .reset_index()
+)
+
+# 2010년과 2026년을 가로 방향으로 배치
+province_pivot = province_summary.pivot(
+    index="시도교육청",
+    columns="연도",
+    values="학생수(계)"
+)
+
+province_pivot = province_pivot.reindex(
+    columns=[2010, 2026]
+)
+
+# 두 연도 데이터가 모두 있는 시도만 비교
+province_pivot = province_pivot.dropna(
+    subset=[2010, 2026]
+)
+
+# 증감 인원과 증감률
+province_pivot["학생 수 증감"] = (
+    province_pivot[2026] - province_pivot[2010]
+)
+
+province_pivot["증감률(%)"] = np.where(
+    province_pivot[2010] != 0,
+    province_pivot["학생 수 증감"]
+    / province_pivot[2010] * 100,
+    np.nan
+)
+
+province_result = province_pivot.reset_index()
+
+province_result = province_result.rename(
+    columns={
+        "시도교육청": "시도",
+        2010: "2010년 재학생 수",
+        2026: "2026년 재학생 수"
+    }
+)
+
+# 학생 수 증감 기준 정렬
+province_result = province_result.sort_values(
+    "학생 수 증감",
+    ascending=False
+)
+
+# 전체 시도별 비교 그래프
+st.subheader("① 시도별 재학생 수 비교")
+
+province_fig = go.Figure()
+
+province_fig.add_trace(
+    go.Bar(
+        x=province_result["시도"],
+        y=province_result["2010년 재학생 수"],
+        name="2010년",
+        marker_color="#2878B5"
+    )
+)
+
+province_fig.add_trace(
+    go.Bar(
+        x=province_result["시도"],
+        y=province_result["2026년 재학생 수"],
+        name="2026년",
+        marker_color="#E87532"
+    )
+)
+
+province_fig.update_layout(
+    title="시도별 전체 재학생 수: 2010년 vs 2026년",
+    xaxis_title="시도교육청",
+    yaxis_title="전체 재학생 수(명)",
+    barmode="group",
+    template="plotly_white",
+    height=600,
+    xaxis=dict(
+        tickangle=-35
+    )
+)
+
+st.plotly_chart(
+    province_fig,
+    use_container_width=True
+)
+
+# 증감 비교 표
+st.subheader("② 시도별 재학생 수 증감")
+
+st.dataframe(
+    province_result.style.format({
+        "2010년 재학생 수": "{:,.0f}명",
+        "2026년 재학생 수": "{:,.0f}명",
+        "학생 수 증감": "{:+,.0f}명",
+        "증감률(%)": "{:+.2f}%"
+    }),
+    use_container_width=True,
+    hide_index=True
+)
+
+# 증가 및 감소 순위
+st.subheader("③ 재학생 수 증가·감소 순위")
+
+col1, col2 = st.columns(2)
+
+with col1:
+
+    st.markdown("#### 학생 수 증가 TOP 5")
+
+    increase_top = province_result.nlargest(
+        5, "학생 수 증감"
+    )
+
+    st.dataframe(
+        increase_top[
+            ["시도", "학생 수 증감", "증감률(%)"]
+        ].style.format({
+            "학생 수 증감": "{:+,.0f}명",
+            "증감률(%)": "{:+.2f}%"
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
+with col2:
+
+    st.markdown("#### 학생 수 감소 TOP 5")
+
+    decrease_top = province_result.nsmallest(
+        5, "학생 수 증감"
+    )
+
+    st.dataframe(
+        decrease_top[
+            ["시도", "학생 수 증감", "증감률(%)"]
+        ].style.format({
+            "학생 수 증감": "{:+,.0f}명",
+            "증감률(%)": "{:+.2f}%"
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
+# 시도별 학생 수 증감 그래프
+st.subheader("④ 시도별 재학생 수 증감 그래프")
+
+change_fig = go.Figure()
+
+change_fig.add_trace(
+    go.Bar(
+        x=province_result["시도"],
+        y=province_result["학생 수 증감"],
+        marker_color=[
+            "#2878B5" if value >= 0 else "#E87532"
+            for value in province_result["학생 수 증감"]
+        ],
+        text=[
+            f"{value:+,.0f}명"
+            for value in province_result["학생 수 증감"]
+        ],
+        textposition="outside",
+        name="학생 수 증감"
+    )
+)
+
+change_fig.add_hline(
+    y=0,
+    line_color="gray",
+    line_dash="dash"
+)
+
+change_fig.update_layout(
+    title="2010년 대비 2026년 시도별 재학생 수 증감",
+    xaxis_title="시도교육청",
+    yaxis_title="학생 수 증감(명)",
+    template="plotly_white",
+    height=550,
+    showlegend=False,
+    xaxis=dict(tickangle=-35)
+)
+
+st.plotly_chart(
+    change_fig,
+    use_container_width=True
+)
+
+
+
 # --------------------------------------------------
 # 데이터 해석 안내
 # --------------------------------------------------
